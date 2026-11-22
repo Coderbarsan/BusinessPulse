@@ -42,6 +42,10 @@
           <a href="#" class="nav-link" data-page="sales">
             <i class="fa-solid fa-cart-shopping"></i> Sales
           </a>
+
+          <a href="#" class="nav-link" data-page="data">
+            <i class="fa-solid fa-database"></i> Data Management
+          </a>
         </nav>
 
         <div class="sidebar-footer">
@@ -332,6 +336,112 @@
                 </thead>
                 <tbody id="sales-table"></tbody>
               </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- DATA MANAGEMENT -->
+
+        <section id="data-page" class="page-section">
+          <div class="page-heading">
+            <div>
+              <h3>Data Management</h3>
+              <p>Import, validate and export your business data.</p>
+            </div>
+          </div>
+
+          <!-- CSV IMPORT -->
+
+          <div class="panel form-panel">
+            <div class="panel-heading">
+              <div>
+                <h5>Import Product Data</h5>
+                <p>Upload your product inventory in CSV format.</p>
+              </div>
+
+              <i class="fa-solid fa-file-csv fa-2x" style="color: #635bff"></i>
+            </div>
+
+            <div class="upload-area">
+              <i class="fa-solid fa-cloud-arrow-up"></i>
+
+              <h5>Upload CSV File</h5>
+
+              <p>Select your product CSV file from your computer.</p>
+
+              <input type="file" id="csv-file" accept=".csv,text/csv" />
+
+              <button class="btn-primary-custom" id="import-btn" type="button">
+                <i class="fa-solid fa-upload"></i>
+                Import Products
+              </button>
+
+              <small>Maximum file size: 5 MB | Maximum rows: 1000</small>
+            </div>
+
+            <div id="import-result" class="import-result"></div>
+
+            <div class="csv-info">
+              <strong>Required CSV columns:</strong>
+              <code>name, category, price, stock</code>
+
+              <button
+                class="btn-secondary-custom"
+                type="button"
+                id="download-template"
+              >
+                <i class="fa-solid fa-download"></i>
+                Download Sample CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- CSV EXPORT -->
+
+          <div class="page-heading">
+            <div>
+              <h3>Export Reports</h3>
+              <p>Download your business data for external analysis.</p>
+            </div>
+          </div>
+
+          <div class="export-grid">
+            <div class="panel export-card">
+              <div class="export-icon">
+                <i class="fa-solid fa-boxes-stacked"></i>
+              </div>
+
+              <h5>Product Inventory</h5>
+
+              <p>Export all product details, pricing and available stock.</p>
+
+              <button
+                class="btn-primary-custom"
+                type="button"
+                id="export-products"
+              >
+                <i class="fa-solid fa-download"></i>
+                Export Products
+              </button>
+            </div>
+
+            <div class="panel export-card">
+              <div class="export-icon sales-export">
+                <i class="fa-solid fa-chart-line"></i>
+              </div>
+
+              <h5>Sales Transactions</h5>
+
+              <p>Download sales history, quantities and revenue details.</p>
+
+              <button
+                class="btn-primary-custom"
+                type="button"
+                id="export-sales"
+              >
+                <i class="fa-solid fa-download"></i>
+                Export Sales
+              </button>
             </div>
           </div>
         </section>

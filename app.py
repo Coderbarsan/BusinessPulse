@@ -1,10 +1,15 @@
 
 import os
 import sqlite3
+import pandas as pd
+import math
+from io import BytesIO
+from flask import send_file
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, render_template, request, g
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 DATABASE = os.path.join(
     app.instance_path,
@@ -424,6 +429,286 @@ def monthly_analytics():
         "monthly": [dict(r) for r in rows],
         "top_products": [dict(p) for p in top_products]
     })
+
+
+# -----------------------------------
+# CSV EXPORT - PRODUCTS
+# -----------------------------------
+
+@app.route("/api/export/products", methods=["GET"])
+def export_products():
+
+    db = get_db()
+
+    rows = db.execute("""
+        SELECT id, name, category, price, stock, created_at
+        FROM products
+        ORDER BY id DESC
+    """).fetchall()
+
+    df = pd.DataFrame(
+        [dict(row) for row in rows],
+        columns=[
+            "id", "name", "category",
+            "price", "stock", "created_at"
+        ]
+    )
+
+    output = BytesIO()
+
+    output.write(
+        df.to_csv(index=False).encode("utf-8-sig")
+    )
+
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="businesspulse_products.csv"
+    )
+
+
+# -----------------------------------
+# CSV EXPORT - SALES
+# -----------------------------------
+
+@app.route("/api/export/sales", methods=["GET"])
+def export_sales():
+
+    db = get_db()
+
+    rows = db.execute("""
+        SELECT id, product_id, product_name,
+               quantity, unit_price, total, created_at
+        FROM sales
+        ORDER BY id DESC
+    """).fetchall()
+
+    df = pd.DataFrame(
+        [dict(row) for row in rows],
+        columns=[
+            "id", "product_id", "product_name",
+            "quantity", "unit_price", "total",
+            "created_at"
+        ]
+    )
+
+    output = BytesIO()
+
+    output.write(
+        df.to_csv(index=False).encode("utf-8-sig")
+    )
+
+    output.seek(0)
+
+    return send_file(
+        output,
+        mimetype="text/csv",
+        as_attachment=True,
+        download_name="businesspulse_sales.csv"
+    )
+
+
+# -----------------------------------
+# JSON ERROR FOR LARGE UPLOADS
+# -----------------------------------
+
+@app.errorhandler(413)
+def file_too_large(error):
+    return jsonify({
+        "success": False,
+        "error": "File too large. Maximum upload size is 5 MB."
+    }), 413
+
+
+
+
+# -----------------------------------
+# CSV IMPORT - PANDAS
+# -----------------------------------
+
+@app.route("/api/import/products", methods=["POST"])
+def import_products():
+
+    if "file" not in request.files:
+        return error_response("No CSV file uploaded")
+
+    file = request.files["file"]
+
+    if not file.filename:
+        return error_response("Please select a CSV file")
+
+    if not file.filename.lower().endswith(".csv"):
+        return error_response("Only CSV files are supported")
+
+    try:
+        # Read uploaded CSV using Pandas
+        df = pd.read_csv(
+            file.stream,
+            encoding="utf-8-sig",
+            dtype=object
+        )
+
+        # Normalize column names
+        df.columns = (
+            df.columns.astype(str)
+            .str.strip()
+            .str.lower()
+        )
+
+        required_columns = {
+            "name", "category", "price", "stock"
+        }
+
+        if not required_columns.issubset(set(df.columns)):
+            missing = required_columns - set(df.columns)
+
+            return error_response(
+                "Missing columns: " + ", ".join(sorted(missing))
+            )
+
+        if df.empty:
+            return error_response("CSV file contains no records")
+
+        if len(df) > 1000:
+            return error_response(
+                "Maximum 1000 products allowed per upload"
+            )
+
+        # Select only required columns
+        df = df[
+            ["name", "category", "price", "stock"]
+        ].copy()
+
+        # Clean text fields
+        df["name"] = df["name"].fillna("").astype(str).str.strip()
+        df["category"] = (
+            df["category"].fillna("").astype(str).str.strip()
+        )
+
+        # Validate empty fields
+        if (df["name"] == "").any():
+            return error_response(
+                "Product names cannot be empty"
+            )
+
+        if (df["category"] == "").any():
+            return error_response(
+                "Product categories cannot be empty"
+            )
+
+        # Convert numeric fields
+        df["price"] = pd.to_numeric(
+            df["price"], errors="coerce"
+        )
+
+        df["stock"] = pd.to_numeric(
+            df["stock"], errors="coerce"
+        )
+
+        # Reject invalid numeric values
+        if df[["price", "stock"]].isna().any().any():
+            return error_response(
+                "Price and stock must contain valid numbers"
+            )
+
+        # Validate price
+        if not df["price"].between(
+            0, 100000000
+        ).all():
+            return error_response(
+                "Price must be between 0 and 100000000"
+            )
+
+        # Stock must be a non-negative integer
+        if not df["stock"].between(
+            0, 10000000
+        ).all() or not (df["stock"] % 1 == 0).all():
+
+            return error_response(
+                "Stock must be a non-negative integer"
+            )
+
+        # Reject duplicate products within uploaded CSV
+        duplicate_mask = df.duplicated(
+            subset=["name", "category"],
+            keep=False
+        )
+
+        if duplicate_mask.any():
+            return error_response(
+                "Duplicate product names found in CSV"
+            )
+
+        # Prepare records
+        records = [
+            (
+                row["name"],
+                row["category"],
+                float(row["price"]),
+                int(row["stock"])
+            )
+            for _, row in df.iterrows()
+        ]
+
+        db = get_db()
+        # Atomic database transaction
+        db.execute("BEGIN IMMEDIATE")
+
+        # Check whether products already exist in database
+        for name, category, price, stock in records:
+            existing = db.execute("""
+            SELECT id FROM products
+            WHERE LOWER(name) = LOWER(?)
+            AND LOWER(category) = LOWER(?)
+            """, (name, category)).fetchone()
+
+            if existing:
+                db.rollback()
+
+                return error_response(
+                    f"Product already exists: {name}"
+                )
+
+        # Insert all records together
+        db.executemany("""
+            INSERT INTO products
+            (name, category, price, stock)
+            VALUES (?, ?, ?, ?)
+        """, records)
+
+        db.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "CSV imported successfully",
+            "total_imported": len(records)
+        }), 201
+
+    except (pd.errors.ParserError, UnicodeDecodeError):
+        return error_response("Invalid or corrupted CSV file")
+
+    except pd.errors.EmptyDataError:
+        return error_response("CSV file is empty")
+
+    except sqlite3.Error:
+        get_db().rollback()
+        app.logger.exception("CSV database import failed")
+
+        return error_response(
+            "Database import failed. No products were imported.",
+            500
+        )
+
+    except Exception:
+        app.logger.exception("Unexpected CSV import error")
+
+        return error_response(
+            "Unable to process CSV file",
+            500
+        )
 
 
 # -----------------------------------

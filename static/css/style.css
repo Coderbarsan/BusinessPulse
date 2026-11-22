@@ -559,3 +559,135 @@ body {
     font-size: 18px;
   }
 }
+
+/* DATA MANAGEMENT */
+
+.upload-area {
+  border: 2px dashed #d9dcef;
+  border-radius: 12px;
+  background: #fafaff;
+  padding: 38px 20px;
+  text-align: center;
+  margin: 20px 0;
+}
+
+.upload-area > i {
+  font-size: 35px;
+  color: var(--primary);
+  margin-bottom: 15px;
+}
+
+.upload-area h5 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+
+.upload-area p {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 18px;
+}
+
+.upload-area input[type="file"] {
+  display: block;
+  max-width: 100%;
+  margin: 0 auto 18px;
+  font-size: 12px;
+}
+
+.upload-area small {
+  display: block;
+  color: var(--muted);
+  margin-top: 15px;
+  font-size: 10px;
+}
+
+.import-result {
+  display: none;
+  padding: 14px;
+  border-radius: 8px;
+  margin: 15px 0;
+  font-size: 12px;
+}
+
+.import-result.success {
+  display: block;
+  background: #e6f8ef;
+  color: #16865e;
+}
+
+.import-result.error {
+  display: block;
+  background: #fff0f0;
+  color: #c43e3e;
+}
+
+.csv-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.csv-info code {
+  background: #f0efff;
+  padding: 7px 10px;
+  border-radius: 6px;
+  color: var(--primary);
+}
+
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.export-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.export-icon {
+  width: 45px;
+  height: 45px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: #eceaff;
+  color: var(--primary);
+  font-size: 19px;
+  margin-bottom: 18px;
+}
+
+.sales-export {
+  background: #e2f5ed;
+  color: #1ba779;
+}
+
+.export-card h5 {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.export-card p {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+
+@media (max-width: 700px) {
+  .export-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .csv-info {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

@@ -78,6 +78,7 @@ function showPage(page) {
     dashboard: "Dashboard",
     products: "Inventory Management",
     sales: "Sales Management",
+    data: "Data Management",
   };
 
   document.getElementById("page-title").textContent = titles[page];
@@ -85,6 +86,9 @@ function showPage(page) {
   if (page === "dashboard") loadDashboard();
   if (page === "products") loadProducts();
   if (page === "sales") loadSales();
+  if (page === "data") {
+    document.getElementById("import-result").className = "import-result";
+  }
 }
 
 // --------------------------------
@@ -546,4 +550,141 @@ async function loadRecentSales() {
 document.addEventListener("DOMContentLoaded", () => {
   loadDashboard();
   loadProducts();
+});
+
+// -----------------------------------
+// CSV IMPORT FUNCTIONALITY
+// -----------------------------------
+
+const importButton = document.getElementById("import-btn");
+
+importButton.addEventListener("click", async () => {
+  const fileInput = document.getElementById("csv-file");
+  const resultBox = document.getElementById("import-result");
+
+  const file = fileInput.files[0];
+
+  if (!file) {
+    showToast("Please select a CSV file", true);
+    return;
+  }
+
+  if (!file.name.toLowerCase().endsWith(".csv")) {
+    showToast("Please upload a CSV file", true);
+    return;
+  }
+
+  if (file.size > 5 * 1024 * 1024) {
+    showToast("Maximum upload size is 5 MB", true);
+    return;
+  }
+
+  const formData = new FormData();
+
+  formData.append("file", file);
+
+  importButton.disabled = true;
+  importButton.textContent = "Processing CSV...";
+
+  resultBox.className = "import-result";
+  resultBox.textContent = "";
+
+  try {
+    const response = await fetch(API + "/import/products", {
+      method: "POST",
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "CSV import failed");
+    }
+
+    resultBox.textContent = `Successfully imported ${data.total_imported} products.`;
+
+    resultBox.className = "import-result success";
+
+    showToast(data.message);
+
+    fileInput.value = "";
+
+    // Refresh application data
+    await loadProducts();
+    await loadDashboard();
+  } catch (error) {
+    resultBox.textContent = error.message;
+    resultBox.className = "import-result error";
+
+    showToast(error.message, true);
+  } finally {
+    importButton.disabled = false;
+    importButton.innerHTML =
+      '<i class="fa-solid fa-upload"></i> Import Products';
+  }
+});
+
+// -----------------------------------
+// CSV TEMPLATE DOWNLOAD
+// -----------------------------------
+
+document.getElementById("download-template").addEventListener("click", () => {
+  const csv = [
+    "name,category,price,stock",
+    "Wireless Mouse,Accessories,899,20",
+    "Mechanical Keyboard,Accessories,2499,15",
+    "Laptop,Electronics,55000,10",
+    "Monitor,Electronics,12000,8",
+  ].join("\n");
+
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = "businesspulse_sample.csv";
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  URL.revokeObjectURL(url);
+
+  showToast("Sample CSV downloaded");
+});
+
+// -----------------------------------
+// CSV EXPORT FUNCTIONALITY
+// -----------------------------------
+
+function exportCSV(type) {
+  const endpoints = {
+    products: "/export/products",
+    sales: "/export/sales",
+  };
+
+  const endpoint = endpoints[type];
+
+  if (!endpoint) return;
+
+  const link = document.createElement("a");
+
+  link.href = API + endpoint;
+  link.download = "";
+
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  showToast("Your CSV download has started");
+}
+
+document.getElementById("export-products").addEventListener("click", () => {
+  exportCSV("products");
+});
+
+document.getElementById("export-sales").addEventListener("click", () => {
+  exportCSV("sales");
 });
