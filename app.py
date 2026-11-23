@@ -7,8 +7,35 @@ from io import BytesIO
 from flask import send_file
 from datetime import datetime, timedelta
 from flask import Flask, jsonify, render_template, request, g
+from datetime import timedelta
+from functools import wraps
+
+from flask import (
+    session,
+    redirect,
+    url_for
+)
+
+from werkzeug.security import (
+    generate_password_hash,
+    check_password_hash
+)
 
 app = Flask(__name__)
+
+app.config["SECRET_KEY"] = os.environ.get(
+    "SECRET_KEY",
+    "development-only-change-this-secret"
+)
+
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = (
+    os.environ.get("FLASK_ENV") == "production"
+)
+
+app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
+
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
 
 DATABASE = os.path.join(
@@ -120,6 +147,18 @@ def init_db():
                 price, total, sale_date
             ))
 
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'staff'
+                CHECK(role IN ('admin', 'staff')),
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     db.commit()
 
 
@@ -134,14 +173,60 @@ def error_response(message, status=400):
 def get_json():
     return request.get_json(silent=True) or {}
 
+# ==========================================
+# ROLE-BASED ACCESS CONTROL
+# ==========================================
+
+def admin_required(function):
+
+    @wraps(function)
+    def decorated_function(*args, **kwargs):
+
+        if session.get("user_role") != "admin":
+            return jsonify({
+                "success": False,
+                "error": "Admin permission required"
+            }), 403
+
+        return function(*args, **kwargs)
+
+    return decorated_function
+
 
 # -----------------------------------
 # FRONTEND ROUTE
 # -----------------------------------
 
+
+# ==========================================
+# PAGE ROUTES
+# ==========================================
+
 @app.route("/")
-def home():
+def index():
+
+    if not session.get("user_id"):
+        return redirect(url_for("login_page"))
+
     return render_template("index.html")
+
+
+@app.route("/login")
+def login_page():
+
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
+    return render_template("login.html")
+
+
+@app.route("/register")
+def register_page():
+
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
+    return render_template("register.html")
 
 
 # -----------------------------------
@@ -530,6 +615,7 @@ def file_too_large(error):
 # -----------------------------------
 
 @app.route("/api/import/products", methods=["POST"])
+@admin_required
 def import_products():
 
     if "file" not in request.files:
@@ -711,13 +797,209 @@ def import_products():
         )
 
 
+
+
+
+# ==========================================
+# PHASE 3: USER AUTHENTICATION
+# ==========================================
+
+@app.route("/api/auth/register", methods=["POST"])
+def api_register():
+
+    data = request.get_json(silent=True) or {}
+
+    name = str(data.get("name", "")).strip()
+    email = str(data.get("email", "")).strip().lower()
+    password = data.get("password", "")
+
+    if not name or not email or not password:
+        return jsonify({
+            "success": False,
+            "error": "All fields are required"
+        }), 400
+
+    if len(name) > 100 or len(email) > 254:
+        return jsonify({
+            "success": False,
+            "error": "Name or email is too long"
+        }), 400
+
+    import re
+
+    if not re.fullmatch(
+        r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+        r"[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+",
+        email
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Please enter a valid email address"
+        }), 400
+
+    if not isinstance(password, str) or len(password) < 8:
+        return jsonify({
+            "success": False,
+            "error": "Password must contain at least 8 characters"
+        }), 400
+
+    if len(password) > 128:
+        return jsonify({
+            "success": False,
+            "error": "Password is too long"
+        }), 400
+
+    db = get_db()
+
+    password_hash = generate_password_hash(password)
+
+    try:
+        db.execute("""
+            INSERT INTO users (name, email, password_hash, role)
+            VALUES (?, ?, ?, 'staff')
+        """, (name, email, password_hash))
+
+        db.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "Registration successful. Please login."
+        }), 201
+
+    except sqlite3.IntegrityError:
+        db.rollback()
+
+        return jsonify({
+            "success": False,
+            "error": "An account with this email already exists"
+        }), 409
+
+
+# ==========================================
+# API AUTHENTICATION MIDDLEWARE
+# ==========================================
+
+
+@app.before_request
+def protect_api_routes():
+
+    if not request.path.startswith("/api/"):
+        return None
+
+    public_endpoints = {
+        "api_register",
+        "api_login",
+        "api_logout"
+    }
+
+    if request.endpoint in public_endpoints:
+        return None
+
+    if not session.get("user_id"):
+        return jsonify({
+            "success": False,
+            "error": "Authentication required. Please login."
+        }), 401
+
+    return None
+
+
+
+
+
+
+# ==========================================
+# LOGIN API
+# ==========================================
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+
+    data = request.get_json(silent=True) or {}
+
+    email = str(data.get("email", "")).strip().lower()
+    password = data.get("password", "")
+
+    if not email or not isinstance(password, str) or not password:
+        return jsonify({
+            "success": False,
+            "error": "Email and password are required"
+        }), 400
+
+    db = get_db()
+
+    user = db.execute("""
+        SELECT id, name, email, password_hash, role
+        FROM users
+        WHERE email = ?
+    """, (email,)).fetchone()
+
+    if not user or not check_password_hash(
+        user["password_hash"], password
+    ):
+        return jsonify({
+            "success": False,
+            "error": "Invalid email or password"
+        }), 401
+
+    # Prevent session fixation
+    session.clear()
+
+    session["user_id"] = user["id"]
+    session["user_name"] = user["name"]
+    session["user_role"] = user["role"]
+
+    session.permanent = True
+
+    return jsonify({
+        "success": True,
+        "message": "Login successful",
+        "user": {
+            "id": user["id"],
+            "name": user["name"],
+            "email": user["email"],
+            "role": user["role"]
+        }
+    }), 200
+
+
+# ==========================================
+# LOGOUT API
+# ==========================================
+
+@app.route("/api/auth/logout", methods=["POST"])
+def api_logout():
+
+    session.clear()
+
+    return jsonify({
+        "success": True,
+        "message": "Logged out successfully"
+    }), 200
+
+
+# ==========================================
+# CURRENT USER API
+# ==========================================
+
+@app.route("/api/auth/me", methods=["GET"])
+def api_current_user():
+
+    return jsonify({
+        "success": True,
+        "user": {
+            "id": session["user_id"],
+            "name": session["user_name"],
+            "role": session["user_role"]
+        }
+    }), 200
+
 # -----------------------------------
 # APPLICATION STARTUP
 # -----------------------------------
 
 with app.app_context():
     init_db()
-
 
 if __name__ == "__main__":
     app.run(debug=True)
