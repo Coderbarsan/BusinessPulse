@@ -3,6 +3,7 @@ import os
 import sqlite3
 import pandas as pd
 import math
+import click
 from io import BytesIO
 from flask import send_file
 from datetime import datetime, timedelta
@@ -11,6 +12,10 @@ from datetime import timedelta
 from functools import wraps
 
 from flask import (
+    Flask,
+    request,
+    jsonify,
+    render_template,
     session,
     redirect,
     url_for
@@ -286,6 +291,7 @@ def get_products():
 
 
 @app.route("/api/products", methods=["POST"])
+@admin_required
 def add_product():
 
     data = get_json()
@@ -327,6 +333,7 @@ def add_product():
 
 
 @app.route("/api/products/<int:product_id>", methods=["PUT"])
+@admin_required
 def update_product(product_id):
 
     data = get_json()
@@ -371,6 +378,7 @@ def update_product(product_id):
 
 
 @app.route("/api/products/<int:product_id>", methods=["DELETE"])
+@admin_required
 def delete_product(product_id):
 
     db = get_db()
@@ -521,6 +529,7 @@ def monthly_analytics():
 # -----------------------------------
 
 @app.route("/api/export/products", methods=["GET"])
+@admin_required
 def export_products():
 
     db = get_db()
@@ -560,6 +569,7 @@ def export_products():
 # -----------------------------------
 
 @app.route("/api/export/sales", methods=["GET"])
+@admin_required
 def export_sales():
 
     db = get_db()
@@ -993,6 +1003,59 @@ def api_current_user():
             "role": session["user_role"]
         }
     }), 200
+
+# ==========================================
+# ADMIN ACCOUNT CREATION COMMAND
+# ==========================================
+
+@app.cli.command("create-admin")
+def create_admin():
+
+    name = click.prompt("Enter admin name").strip()
+    email = click.prompt("Enter admin email").strip().lower()
+
+    password = click.prompt(
+        "Enter admin password",
+        hide_input=True,
+        confirmation_prompt=True
+    )
+
+    if not name or not email:
+        click.echo("Name and email cannot be empty.")
+        raise click.Abort()
+
+    if len(password) < 8:
+        click.echo("Password must contain at least 8 characters.")
+        raise click.Abort()
+
+    db = get_db()
+
+    existing_user = db.execute(
+        "SELECT id FROM users WHERE email = ?",
+        (email,)
+    ).fetchone()
+
+    if existing_user:
+        click.echo("An account with this email already exists.")
+        raise click.Abort()
+
+    try:
+        password_hash = generate_password_hash(password)
+
+        db.execute("""
+            INSERT INTO users
+            (name, email, password_hash, role)
+            VALUES (?, ?, ?, 'admin')
+        """, (name, email, password_hash))
+
+        db.commit()
+
+        click.echo("Admin account created successfully!")
+
+    except sqlite3.Error:
+        db.rollback()
+        click.echo("Failed to create admin account.")
+        raise click.Abort()
 
 # -----------------------------------
 # APPLICATION STARTUP

@@ -688,3 +688,46 @@ document.getElementById("export-products").addEventListener("click", () => {
 document.getElementById("export-sales").addEventListener("click", () => {
   exportCSV("sales");
 });
+
+// ==========================================
+// BUSINESSPULSE LOGOUT
+// ==========================================
+
+const logoutButton = document.getElementById("logoutButton");
+
+if (logoutButton) {
+  logoutButton.addEventListener("click", async function () {
+    const confirmLogout = confirm("Are you sure you want to logout?");
+
+    if (!confirmLogout) {
+      return;
+    }
+
+    logoutButton.disabled = true;
+    logoutButton.textContent = "Logging out...";
+
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+
+        credentials: "same-origin",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Logout failed");
+      }
+
+      // Redirect to login after successful logout
+      window.location.replace("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+
+      alert("Unable to logout. Please try again.");
+
+      logoutButton.disabled = false;
+      logoutButton.textContent = "Logout";
+    }
+  });
+}
