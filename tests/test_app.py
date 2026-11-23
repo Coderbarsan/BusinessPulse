@@ -26,7 +26,11 @@ def client(tmp_path, monkeypatch):
     # Configure Flask for testing
     businesspulse.app.config.update(
         TESTING=True,
-        SECRET_KEY="pytest-test-secret"
+        SECRET_KEY="pytest-test-secret",
+
+        # Disable CSRF for existing business-logic tests.
+        # Dedicated security tests will enable it separately.
+        WTF_CSRF_ENABLED=False
     )
 
     # Initialize the temporary database
@@ -1214,3 +1218,63 @@ def test_session_cookie_has_security_attributes(client):
 
     assert "HttpOnly" in set_cookie
     assert "SameSite=Lax" in set_cookie
+
+
+# =========================================
+# PHASE 6.2: CSRF SECURITY TESTS
+# =========================================
+
+
+# -----------------------------------------
+# TEST: CSRF REJECTS REQUEST WITHOUT TOKEN
+# -----------------------------------------
+
+def test_csrf_rejects_request_without_token(client):
+
+    # Enable CSRF protection for this test
+    businesspulse.app.config["WTF_CSRF_ENABLED"] = True
+
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "name": "CSRF Test User",
+            "email": "csrfuser@example.com",
+            "password": "TestPassword123"
+        }
+    )
+
+    assert response.status_code == 400
+
+
+# -----------------------------------------
+# TEST: CSRF ACCEPTS REQUEST WITH VALID TOKEN
+# -----------------------------------------
+
+def test_csrf_accepts_request_with_valid_token(client):
+
+    # Enable CSRF protection for this test
+    businesspulse.app.config["WTF_CSRF_ENABLED"] = True
+
+    # First, obtain a CSRF token
+    token_response = client.get("/api/auth/csrf")
+
+    assert token_response.status_code == 200
+    assert token_response.json["success"] is True
+
+    csrf_token = token_response.json["csrf_token"]
+
+    # Send registration request with the valid token
+    response = client.post(
+        "/api/auth/register",
+        json={
+            "name": "Valid CSRF User",
+            "email": "validcsrf@example.com",
+            "password": "TestPassword123"
+        },
+        headers={
+            "X-CSRFToken": csrf_token
+        }
+    )
+
+    assert response.status_code == 201
+    assert response.json["success"] is True

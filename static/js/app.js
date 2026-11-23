@@ -69,6 +69,25 @@ function applyRolePermissions() {
 // HELPER FUNCTIONS
 // --------------------------------
 
+// ==========================================
+// CSRF TOKEN MANAGEMENT
+// ==========================================
+
+async function getCsrfToken() {
+  const response = await fetch(API + "/auth/csrf", {
+    method: "GET",
+    credentials: "same-origin",
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success || !data.csrf_token) {
+    throw new Error("Unable to obtain CSRF token.");
+  }
+
+  return data.csrf_token;
+}
+
 const money = (value) =>
   new Intl.NumberFormat("en-IN", {
     style: "currency",
@@ -89,13 +108,33 @@ const escapeHTML = (value) =>
       })[char],
   );
 
+// ==========================================
+// SECURE API REQUEST HANDLER
+// ==========================================
+
 async function apiRequest(endpoint, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+
+  // Start with existing request headers
+  const headers = {
+    "Content-Type": "application/json",
+    ...options.headers,
+  };
+
+  // CSRF token is required for state-changing requests
+  const unsafeMethods = ["POST", "PUT", "PATCH", "DELETE"];
+
+  if (unsafeMethods.includes(method)) {
+    const token = await getCsrfToken();
+
+    headers["X-CSRFToken"] = token;
+  }
+
   const response = await fetch(API + endpoint, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
+    method,
+    headers,
+    credentials: "same-origin",
   });
 
   const data = await response.json();
@@ -691,8 +730,14 @@ importButton.addEventListener("click", async () => {
   resultBox.textContent = "";
 
   try {
+    const token = await getCsrfToken();
+
     const response = await fetch(API + "/import/products", {
       method: "POST",
+      headers: {
+        "X-CSRFToken": token,
+      },
+      credentials: "same-origin",
       body: formData,
     });
 
@@ -808,8 +853,14 @@ if (logoutButton) {
     logoutButton.textContent = "Logging out...";
 
     try {
+      const token = await getCsrfToken();
+
       const response = await fetch("/api/auth/logout", {
         method: "POST",
+
+        headers: {
+          "X-CSRFToken": token,
+        },
 
         credentials: "same-origin",
       });

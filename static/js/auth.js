@@ -18,6 +18,25 @@ function showMessage(message, type = "danger") {
 }
 
 // ==========================================
+// CSRF TOKEN HELPER
+// ==========================================
+
+async function getCsrfToken() {
+  const response = await fetch("/api/auth/csrf", {
+    method: "GET",
+    credentials: "same-origin",
+  });
+
+  const data = await response.json();
+
+  if (!response.ok || !data.success || !data.csrf_token) {
+    throw new Error("Unable to obtain CSRF token.");
+  }
+
+  return data.csrf_token;
+}
+
+// ==========================================
 // LOGIN
 // ==========================================
 
@@ -34,11 +53,15 @@ if (loginForm) {
     button.textContent = "Logging in...";
 
     try {
+      // Get CSRF token before login
+      const csrfToken = await getCsrfToken();
+
       const response = await fetch("/api/auth/login", {
         method: "POST",
 
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
         },
 
         credentials: "same-origin",
@@ -53,7 +76,6 @@ if (loginForm) {
 
       if (!response.ok || !result.success) {
         showMessage(result.error || "Login failed. Please try again.");
-
         return;
       }
 
@@ -63,7 +85,7 @@ if (loginForm) {
     } catch (error) {
       console.error("Login error:", error);
 
-      showMessage("Unable to connect to the server.");
+      showMessage(error.message || "Unable to connect to the server.");
     } finally {
       button.disabled = false;
       button.textContent = "Login";
@@ -89,11 +111,15 @@ if (registerForm) {
     button.textContent = "Creating account...";
 
     try {
+      // Get CSRF token before registration
+      const csrfToken = await getCsrfToken();
+
       const response = await fetch("/api/auth/register", {
         method: "POST",
 
         headers: {
           "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken,
         },
 
         credentials: "same-origin",
@@ -109,7 +135,6 @@ if (registerForm) {
 
       if (!response.ok || !result.success) {
         showMessage(result.error || "Registration failed. Please try again.");
-
         return;
       }
 
@@ -126,7 +151,7 @@ if (registerForm) {
     } catch (error) {
       console.error("Registration error:", error);
 
-      showMessage("Unable to connect to the server.");
+      showMessage(error.message || "Unable to connect to the server.");
     } finally {
       button.disabled = false;
       button.textContent = "Create Account";

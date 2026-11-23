@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, render_template, request, g
 from datetime import timedelta
 from functools import wraps
+from flask_wtf.csrf import CSRFProtect, generate_csrf
+from flask_wtf.csrf import CSRFError
 
 from flask import (
     Flask,
@@ -48,6 +50,12 @@ if not SECRET_KEY:
     SECRET_KEY = secrets.token_hex(32)
 
 app.config["SECRET_KEY"] = SECRET_KEY
+
+# -----------------------------------
+# CSRF PROTECTION
+# -----------------------------------
+
+csrf = CSRFProtect(app)
 
 # Session cookie security
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -624,16 +632,37 @@ def export_sales():
     )
 
 
+
+
+# ==========================================
+# CSRF ERROR HANDLER
+# ==========================================
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+
+    if request.path.startswith("/api/"):
+        return jsonify({
+            "success": False,
+            "error": "CSRF validation failed. Please refresh and try again."
+        }), 400
+
+    return "CSRF validation failed. Please refresh the page.", 400
+
+
 # -----------------------------------
 # JSON ERROR FOR LARGE UPLOADS
 # -----------------------------------
 
 @app.errorhandler(413)
 def file_too_large(error):
+
     return jsonify({
         "success": False,
         "error": "File too large. Maximum upload size is 5 MB."
     }), 413
+
+
 
 
 
@@ -917,7 +946,8 @@ def protect_api_routes():
     public_endpoints = {
         "api_register",
         "api_login",
-        "api_logout"
+        "api_logout",
+        "get_csrf_token"
     }
 
     if request.endpoint in public_endpoints:
@@ -1021,6 +1051,18 @@ def api_current_user():
             "role": session["user_role"]
         }
     }), 200
+
+# ==========================================
+# CSRF TOKEN API
+# ==========================================
+
+@app.route("/api/auth/csrf", methods=["GET"])
+def get_csrf_token():
+
+    return jsonify({
+        "success": True,
+        "csrf_token": generate_csrf()
+    })
 
 # ==========================================
 # ADMIN ACCOUNT CREATION COMMAND
