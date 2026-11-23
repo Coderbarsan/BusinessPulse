@@ -5,6 +5,67 @@ let productsChart = null;
 let allProducts = [];
 
 // --------------------------------
+// AUTHENTICATION & USER ROLE
+// --------------------------------
+
+let currentUser = null;
+let isAdmin = false;
+
+// ==========================================
+// PHASE 4.2: USER AUTHENTICATION & ROLE
+// ==========================================
+
+async function loadCurrentUser() {
+  try {
+    const response = await fetch(API + "/auth/me", {
+      method: "GET",
+      credentials: "same-origin",
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.success || !data.user) {
+      throw new Error("Authentication required");
+    }
+
+    currentUser = data.user;
+
+    isAdmin = currentUser.role === "admin";
+
+    // Display logged-in user's name
+    document.getElementById("logged-user-name").textContent = currentUser.name;
+
+    // Display logged-in user's role
+    document.getElementById("logged-user-role").textContent =
+      currentUser.role.charAt(0).toUpperCase() + currentUser.role.slice(1);
+
+    // Apply role-based interface permissions
+    applyRolePermissions();
+    return true;
+  } catch (error) {
+    console.error("Authentication error:", error);
+
+    window.location.replace("/login");
+
+    return false;
+  }
+}
+
+// ==========================================
+// APPLY ROLE-BASED UI PERMISSIONS
+// ==========================================
+
+function applyRolePermissions() {
+  document.querySelectorAll("[data-admin-only]").forEach((element) => {
+    if (isAdmin) {
+      element.hidden = false;
+    } else {
+      element.hidden = true;
+    }
+  });
+}
+
+// --------------------------------
 // HELPER FUNCTIONS
 // --------------------------------
 
@@ -245,8 +306,17 @@ async function loadProducts() {
 function renderProducts(products) {
   const table = document.getElementById("products-table");
 
+  const totalColumns = isAdmin ? 6 : 5;
+
   if (!products.length) {
-    table.innerHTML = `<tr><td colspan="6" class="empty-row">No products found</td></tr>`;
+    table.innerHTML = `
+            <tr>
+                <td colspan="${totalColumns}" class="empty-row">
+                    No products found
+                </td>
+            </tr>
+        `;
+
     return;
   }
 
@@ -268,30 +338,51 @@ function renderProducts(products) {
 
       return `
             <tr>
+
                 <td>#${product.id}</td>
-                <td><strong>${escapeHTML(product.name)}</strong></td>
+
+                <td>
+                    <strong>${escapeHTML(product.name)}</strong>
+                </td>
+
                 <td>${escapeHTML(product.category)}</td>
+
                 <td>${money(product.price)}</td>
+
                 <td>
                     <span class="stock-badge ${stockClass}">
                         ${product.stock} - ${stockLabel}
                     </span>
                 </td>
-                <td>
-                    <button class="action-btn"
-                        data-action="edit"
-                        data-id="${product.id}"
-                        title="Edit">
-                        <i class="fa-solid fa-pen"></i>
-                    </button>
 
-                    <button class="action-btn delete-btn"
-                        data-action="delete"
-                        data-id="${product.id}"
-                        title="Delete">
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
-                </td>
+                ${
+                  isAdmin
+                    ? `
+                    <td>
+                        <button
+                            class="action-btn"
+                            data-action="edit"
+                            data-id="${product.id}"
+                            title="Edit">
+
+                            <i class="fa-solid fa-pen"></i>
+
+                        </button>
+
+                        <button
+                            class="action-btn delete-btn"
+                            data-action="delete"
+                            data-id="${product.id}"
+                            title="Delete">
+
+                            <i class="fa-solid fa-trash"></i>
+
+                        </button>
+                    </td>
+                `
+                    : ""
+                }
+
             </tr>
         `;
     })
@@ -547,9 +638,19 @@ async function loadRecentSales() {
 // INITIALIZE APPLICATION
 // --------------------------------
 
-document.addEventListener("DOMContentLoaded", () => {
-  loadDashboard();
-  loadProducts();
+document.addEventListener("DOMContentLoaded", async () => {
+  // First identify the logged-in user
+  const authenticated = await loadCurrentUser();
+
+  // Stop if authentication fails
+  if (!authenticated) {
+    return;
+  }
+
+  // Load application data after identifying user role
+  await loadDashboard();
+
+  await loadProducts();
 });
 
 // -----------------------------------

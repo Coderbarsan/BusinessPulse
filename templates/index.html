@@ -51,8 +51,8 @@
         <div class="sidebar-footer">
           <div class="profile-icon">BP</div>
           <div>
-            <strong>Business Admin</strong>
-            <small>Administrator</small>
+            <strong id="logged-user-name">Loading...</strong>
+            <small id="logged-user-role">Loading...</small>
           </div>
         </div>
       </aside>
@@ -186,7 +186,7 @@
             </div>
           </div>
 
-          <div class="panel form-panel">
+          <div class="panel form-panel" data-admin-only>
             <h5 id="product-form-title">Add New Product</h5>
 
             <form id="product-form">
@@ -276,7 +276,7 @@
                     <th>Category</th>
                     <th>Price</th>
                     <th>Stock</th>
-                    <th>Actions</th>
+                    <th data-admin-only>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="products-table"></tbody>
@@ -361,7 +361,7 @@
 
           <!-- CSV IMPORT -->
 
-          <div class="panel form-panel">
+          <div class="panel form-panel" data-admin-only>
             <div class="panel-heading">
               <div>
                 <h5>Import Product Data</h5>
@@ -414,7 +414,7 @@
             </div>
           </div>
 
-          <div class="export-grid">
+          <div class="export-grid" data-admin-only>
             <div class="panel export-card">
               <div class="export-icon">
                 <i class="fa-solid fa-boxes-stacked"></i>

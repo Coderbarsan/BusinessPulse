@@ -1,6 +1,6 @@
-
 import os
 import sqlite3
+import secrets
 import pandas as pd
 import math
 import click
@@ -26,22 +26,40 @@ from werkzeug.security import (
     check_password_hash
 )
 
+
 app = Flask(__name__)
 
-app.config["SECRET_KEY"] = os.environ.get(
-    "SECRET_KEY",
-    "development-only-change-this-secret"
-)
+# -----------------------------------
+# APPLICATION SECURITY CONFIGURATION
+# -----------------------------------
 
+APP_ENV = os.environ.get("APP_ENV", "development").lower()
+
+SECRET_KEY = os.environ.get("SECRET_KEY")
+
+# Production must always use a manually configured secret key.
+if APP_ENV == "production" and not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable must be set in production."
+    )
+
+# Generate a temporary random key for local development.
+if not SECRET_KEY:
+    SECRET_KEY = secrets.token_hex(32)
+
+app.config["SECRET_KEY"] = SECRET_KEY
+
+# Session cookie security
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-app.config["SESSION_COOKIE_SECURE"] = (
-    os.environ.get("FLASK_ENV") == "production"
-)
+app.config["SESSION_COOKIE_SECURE"] = (APP_ENV == "production")
 
+# Session expires after 8 hours
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=8)
 
+# Maximum uploaded file size: 5 MB
 app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+
 
 DATABASE = os.path.join(
     app.instance_path,
